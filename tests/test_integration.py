@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import tempfile
 import threading
@@ -110,14 +111,25 @@ class CrawlerIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(stats["broken_urls"], 1)
         self.assertEqual(stats["redirects"], 1)
 
-        output = Path(self.temp_dir.name)
-        for name in (
-            "urls.txt", "pages.csv", "files.csv", "external_urls.csv",
-            "broken_urls.csv", "redirects.csv", "stats.json",
-        ):
-            self.assertTrue((output / name).is_file())
-        saved_stats = json.loads((output / "stats.json").read_text())
-        self.assertEqual(saved_stats["start_url"], f"{SiteHandler.base_url}/")
+        port = SiteHandler.base_url.rsplit(":", 1)[1]
+        output = Path(self.temp_dir.name) / f"127.0.0.1_{port}"
+        self.assertEqual(crawler.output_dir, output)
+        self.assertEqual(
+            sorted(path.name for path in output.iterdir()),
+            ["issues.csv", "summary.json", "urls.csv"],
+        )
+        summary = json.loads((output / "summary.json").read_text())
+        self.assertEqual(summary["stats"]["start_url"], f"{SiteHandler.base_url}/")
+        self.assertEqual(summary["settings"]["MAX_PAGES"], 20)
+        self.assertEqual(summary["external_domains"], {"outside.test": 1})
+
+        with (output / "urls.csv").open(encoding="utf-8") as handle:
+            url_rows = {row["url"]: row for row in csv.DictReader(handle)}
+        self.assertEqual(url_rows[f"{SiteHandler.base_url}/report.pdf"]["type"], "file")
+        self.assertEqual(url_rows[f"{SiteHandler.base_url}/private/hidden"]["type"], "not_crawled")
+        with (output / "issues.csv").open(encoding="utf-8") as handle:
+            issues = sorted(row["issue"] for row in csv.DictReader(handle))
+        self.assertEqual(issues, ["broken", "redirect"])
 
 
 if __name__ == "__main__":

@@ -80,6 +80,27 @@ class Settings:
             output_dir=os.getenv("OUTPUT_DIR", "output").strip(),
         )
 
+    def as_env(self) -> dict[str, object]:
+        """Active settings keyed by their .env variable names (START_URL excluded)."""
+        return {
+            "REQUEST_TIMEOUT": self.request_timeout,
+            "MAX_RETRIES": self.max_retries,
+            "RETRY_BACKOFF": self.retry_backoff,
+            "MAX_PAGES": self.max_pages,
+            "MAX_DEPTH": self.max_depth,
+            "MAX_CONCURRENCY": self.max_concurrency,
+            "CRAWL_DELAY": self.crawl_delay,
+            "USER_AGENT": self.user_agent,
+            "ALLOW_SUBDOMAINS": self.allow_subdomains,
+            "KEEP_QUERY_PARAMS": self.keep_query_params,
+            "RESPECT_ROBOTS_TXT": self.respect_robots_txt,
+            "ENABLE_SITEMAP": self.enable_sitemap,
+            "ENABLE_PLAYWRIGHT": self.enable_playwright,
+            "VERIFY_SSL": self.verify_ssl,
+            "MAX_RESPONSE_BYTES": self.max_response_bytes,
+            "OUTPUT_DIR": self.output_dir,
+        }
+
     def validate(self) -> None:
         if not self.start_url:
             raise SettingsError("provide a URL argument or set START_URL in .env")

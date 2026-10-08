@@ -58,6 +58,14 @@ def _normalize_path(path: str) -> str:
     return normalized.rstrip("/") or "/"
 
 
+def domain_folder(url: str) -> str:
+    """Filesystem-safe folder name for a URL's host, e.g. ``example.com``."""
+    parsed = urlsplit(url)
+    host = (parsed.hostname or "unknown").lower().removeprefix("www.")
+    name = f"{host}_{parsed.port}" if parsed.port else host
+    return re.sub(r"[^a-z0-9._-]", "_", name)
+
+
 def origin(url: str) -> str:
     parsed = urlsplit(url)
     return urlunsplit((parsed.scheme, parsed.netloc, "", "", "")).rstrip("/")

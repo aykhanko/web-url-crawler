@@ -12,32 +12,37 @@ from crawler.crawler import WebsiteCrawler
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Discover internal URLs, files, redirects and broken links on a website."
+        description=(
+            "Discover internal URLs, files, redirects and broken links on a website. "
+            "All settings except the URL are read from .env."
+        )
     )
-    parser.add_argument("url", nargs="?", help="Start URL (overrides START_URL in .env)")
-    parser.add_argument("--max-pages", type=int, help="Maximum number of HTTP URLs to request")
-    parser.add_argument("--depth", type=int, help="Maximum link depth")
-    parser.add_argument("--concurrency", type=int, help="Maximum concurrent requests")
-    parser.add_argument("--output", help="Output directory")
+    parser.add_argument(
+        "url",
+        nargs="?",
+        help="Start URL. If omitted, you are asked in the terminal (Enter uses START_URL from .env)",
+    )
     return parser
+
+
+def ask_url(default: str) -> str:
+    """Prompt for the start URL; an empty answer falls back to START_URL."""
+    if not sys.stdin.isatty():
+        return default
+    hint = f" [{default}]" if default else ""
+    try:
+        answer = input(f"URL to crawl{hint}: ").strip()
+    except EOFError:
+        return default
+    return answer or default
 
 
 async def async_main() -> int:
     args = build_parser().parse_args()
     try:
         settings = Settings.from_env()
-        updates: dict[str, object] = {}
-        if args.url:
-            updates["start_url"] = args.url
-        if args.max_pages is not None:
-            updates["max_pages"] = args.max_pages
-        if args.depth is not None:
-            updates["max_depth"] = args.depth
-        if args.concurrency is not None:
-            updates["max_concurrency"] = args.concurrency
-        if args.output:
-            updates["output_dir"] = args.output
-        settings = replace(settings, **updates)
+        url = args.url or ask_url(settings.start_url)
+        settings = replace(settings, start_url=url.strip())
         settings.validate()
         crawler = WebsiteCrawler(settings)
     except (SettingsError, ValueError) as exc:

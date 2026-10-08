@@ -71,15 +71,14 @@ python main.py https://example.com
 
 ## Usage
 
-The positional CLI URL overrides `START_URL` from `.env`. Without a positional
-argument, `START_URL` is required.
+Only the URL comes from the terminal; every other setting is read from `.env`.
+Without a positional URL the crawler asks for one interactively — pressing Enter
+uses `START_URL` from `.env`. When the crawl starts, the active `.env` settings
+and the output folder are printed.
 
 ```bash
-python main.py
-python main.py https://example.com
-python main.py https://example.com --max-pages 500
-python main.py https://example.com --depth 5
-python main.py https://example.com --concurrency 3 --output output/example
+python main.py                       # prompts: URL to crawl [https://example.com]:
+python main.py https://example.com   # skips the prompt
 python main.py --help
 ```
 
@@ -91,28 +90,30 @@ python -m unittest discover -v
 
 ## Output files
 
-Every run rewrites the configured output files:
+Each domain gets its own folder under `OUTPUT_DIR` (`www.` is dropped, a
+non-default port is appended as `_port`). Re-crawling a domain overwrites only
+that domain's folder.
 
 ```text
 output/
-├── urls.txt             # all unique discovered internal URLs
-├── pages.csv            # HTML response metadata
-├── files.csv            # file/non-HTML URLs and available metadata
-├── external_urls.csv    # links outside the allowed domain boundary
-├── broken_urls.csv      # HTTP 400+ and request failures
-├── redirects.csv        # every unique redirect hop
-└── stats.json           # aggregate crawl statistics
+├── example.com/
+│   ├── urls.csv       # every internal URL: url, type, status_code, content_type, depth, source_url
+│   ├── issues.csv     # problems to fix: issue, url, status_code, detail, source_url
+│   └── summary.json   # stats, .env settings used, external domains with link counts
+└── another-site.org/
+    └── ...
 ```
 
-`pages.csv` contains `url`, `status_code`, `content_type`, `source_url`, `depth`,
-and `final_url`. Detail outputs also retain discovery timestamps, response times,
-and error messages where relevant.
+- `urls.csv` `type`: `page` (HTML), `file` (non-HTML/file link), `not_crawled`
+  (discovered but skipped, e.g. robots.txt, depth or `MAX_PAGES` limits).
+- `issues.csv` `issue`: `broken` (HTTP 400+), `error` (network/timeout, message in
+  `detail`), `redirect` (destination URL in `detail`).
 
 ## Configuration
 
 | Variable | Default | Meaning |
 |---|---:|---|
-| `START_URL` | `https://example.com` | URL used when no CLI URL is supplied |
+| `START_URL` | `https://example.com` | Default answer for the URL prompt |
 | `REQUEST_TIMEOUT` | `15` | Total request timeout in seconds |
 | `MAX_RETRIES` | `3` | Retries after network or retryable HTTP errors |
 | `RETRY_BACKOFF` | `0.5` | Base exponential retry delay in seconds |
@@ -128,7 +129,7 @@ and error messages where relevant.
 | `ENABLE_PLAYWRIGHT` | `false` | Render linkless HTML with Chromium |
 | `VERIFY_SSL` | `true` | Verify TLS certificates |
 | `MAX_RESPONSE_BYTES` | `5000000` | Maximum decompressed body read per response |
-| `OUTPUT_DIR` | `output` | Result directory |
+| `OUTPUT_DIR` | `output` | Parent directory; results go to `OUTPUT_DIR/<domain>/` |
 
 The delay is global rather than per worker, keeping aggregate request rate polite.
 robots.txt is always checked for sitemap directives; its crawl rules are enforced

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import time
 from contextlib import AsyncExitStack
+from pathlib import Path
 from urllib.parse import urljoin
 
 import aiohttp
@@ -12,7 +13,7 @@ from .config import Settings
 from .exporter import export_results
 from .filters import content_type, is_html, is_internal, looks_like_file
 from .models import ExternalRecord, QueueItem, RedirectRecord, URLRecord, utc_now
-from .normalizer import ensure_scheme, normalize_url, origin
+from .normalizer import domain_folder, ensure_scheme, normalize_url, origin
 from .parser import parse_html
 from .playwright_renderer import PlaywrightRenderer
 from .robots import RobotsPolicy, parse_robots
@@ -36,6 +37,8 @@ class WebsiteCrawler:
         if normalized is None:
             raise ValueError(f"Invalid start URL: {settings.start_url!r}")
         self.start_url = normalized
+        self.domain = domain_folder(normalized)
+        self.output_dir = Path(settings.output_dir) / self.domain
 
         self.queue: asyncio.Queue[QueueItem] = asyncio.Queue()
         self.discovered: set[str] = set()
@@ -56,10 +59,12 @@ class WebsiteCrawler:
         self._rate_lock = asyncio.Lock()
         self._last_request_at = 0.0
         self._started_at = 0.0
+        self._crawled_at = ""
 
     async def run(self) -> dict[str, object]:
         self._started_at = time.monotonic()
-        LOGGER.info("Starting crawler: %s", self.start_url)
+        self._crawled_at = utc_now()
+        self._print_settings()
         timeout = aiohttp.ClientTimeout(total=self.settings.request_timeout)
         connector = aiohttp.TCPConnector(
             limit=self.settings.max_concurrency,
@@ -97,7 +102,7 @@ class WebsiteCrawler:
         finally:
             stats = self._stats()
             export_results(
-                self.settings.output_dir,
+                self.output_dir,
                 internal_urls=self.discovered,
                 pages=self.pages,
                 files=self.files,
@@ -105,8 +110,9 @@ class WebsiteCrawler:
                 broken_urls=self.broken,
                 redirects=self.redirects,
                 stats=stats,
+                settings=self.settings.as_env(),
             )
-            self._print_summary(stats)
+            self._print_summary(stats, self.output_dir)
         return stats
 
     async def _bootstrap(self) -> None:
@@ -376,7 +382,9 @@ class WebsiteCrawler:
 
     def _stats(self) -> dict[str, object]:
         return {
+            "domain": self.domain,
             "start_url": self.start_url,
+            "crawled_at": self._crawled_at,
             "pages_crawled": len(self.pages),
             "urls_discovered": len(self.discovered),
             "files_found": len(self.files),
@@ -386,8 +394,19 @@ class WebsiteCrawler:
             "duration_seconds": round(time.monotonic() - self._started_at, 2),
         }
 
+    def _print_settings(self) -> None:
+        print("================================")
+        print(f"Starting crawl: {self.start_url}")
+        print(f"Output folder: {self.output_dir}\n")
+        print("Settings (.env):")
+        env = self.settings.as_env()
+        width = max(len(name) for name in env)
+        for name, value in env.items():
+            print(f"  {name.ljust(width)} = {value}")
+        print("================================\n")
+
     @staticmethod
-    def _print_summary(stats: dict[str, object]) -> None:
+    def _print_summary(stats: dict[str, object], output_dir: Path) -> None:
         print("\n================================")
         print("Crawl completed\n")
         print(f"Pages crawled: {stats['pages_crawled']}")
@@ -397,4 +416,5 @@ class WebsiteCrawler:
         print(f"Broken URLs: {stats['broken_urls']}")
         print(f"Redirects: {stats['redirects']}")
         print(f"Duration: {stats['duration_seconds']} sec")
+        print(f"Saved to: {output_dir}")
         print("================================")
